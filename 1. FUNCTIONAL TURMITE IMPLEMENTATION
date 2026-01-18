@@ -1,0 +1,607 @@
+
+Let's create a functional TURMITE implementation. I'll provide a complete Python implementation with visualization.
+
+TURMITE: A Flexible Turmite Simulator
+
+Here's a modular, feature-rich turmite simulator with multiple visualization options:
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+from matplotlib import colors
+from matplotlib.colors import ListedColormap
+import random
+from typing import Dict, Tuple, List, Optional
+from enum import Enum
+import json
+
+class Direction(Enum):
+    """Cardinal directions"""
+    NORTH = 0
+    EAST = 1
+    SOUTH = 2
+    WEST = 3
+
+class Turn(Enum):
+    """Possible turning instructions"""
+    LEFT = -1
+    RIGHT = 1
+    UTURN = 2
+    NO_TURN = 0
+
+class Turmite:
+    """
+    A generalized Turmite - a 2D Turing machine on a grid.
+    """
+    
+    def __init__(self, 
+                 rule_table: Dict[Tuple[int, int], Tuple[int, Turn, int]],
+                 initial_state: int = 0,
+                 initial_direction: Direction = Direction.NORTH,
+                 initial_pos: Tuple[int, int] = (0, 0),
+                 num_colors: int = 2):
+        """
+        Initialize a Turmite.
+        
+        Parameters:
+        -----------
+        rule_table : Dict[Tuple[int, int], Tuple[int, Turn, int]]
+            Rule table where keys are (current_state, current_color)
+            and values are (new_color, turn_direction, next_state)
+        initial_state : int
+            Starting internal state
+        initial_direction : Direction
+            Starting direction
+        initial_pos : Tuple[int, int]
+            Starting position (x, y)
+        num_colors : int
+            Number of possible colors (default 2 for black/white)
+        """
+        self.rule_table = rule_table
+        self.state = initial_state
+        self.direction = initial_direction
+        self.x, self.y = initial_pos
+        self.num_colors = num_colors
+        
+        # Statistics
+        self.steps = 0
+        self.visited_cells = set()
+        self.visited_cells.add(initial_pos)
+        
+        # Grid tracking (dynamic expansion)
+        self.grid = {}
+        self.min_x = self.max_x = self.x
+        self.min_y = self.max_y = self.y
+        
+    def step(self) -> None:
+        """Execute one step of the Turmite"""
+        # Get current cell color (default 0)
+        current_color = self.grid.get((self.x, self.y), 0)
+        
+        # Look up rule
+        rule_key = (self.state, current_color)
+        if rule_key not in self.rule_table:
+            raise ValueError(f"No rule defined for state={self.state}, color={current_color}")
+        
+        new_color, turn_instruction, next_state = self.rule_table[rule_key]
+        
+        # Update current cell
+        self.grid[(self.x, self.y)] = new_color
+        
+        # Update direction
+        turn_value = turn_instruction.value if isinstance(turn_instruction, Turn) else turn_instruction
+        new_direction_value = (self.direction.value + turn_value) % 4
+        self.direction = Direction(new_direction_value)
+        
+        # Update state
+        self.state = next_state
+        
+        # Move forward
+        self._move_forward()
+        
+        # Update statistics
+        self.steps += 1
+        self.visited_cells.add((self.x, self.y))
+        
+        # Update grid bounds
+        self.min_x = min(self.min_x, self.x)
+        self.max_x = max(self.max_x, self.x)
+        self.min_y = min(self.min_y, self.y)
+        self.max_y = max(self.max_y, self.y)
+    
+    def _move_forward(self) -> None:
+        """Move one cell in current direction"""
+        if self.direction == Direction.NORTH:
+            self.y += 1
+        elif self.direction == Direction.EAST:
+            self.x += 1
+        elif self.direction == Direction.SOUTH:
+            self.y -= 1
+        elif self.direction == Direction.WEST:
+            self.x -= 1
+    
+    def run(self, steps: int) -> None:
+        """Run the turmite for specified number of steps"""
+        for _ in range(steps):
+            self.step()
+    
+    def get_grid_matrix(self, 
+                       padding: int = 5, 
+                       default_color: int = 0) -> np.ndarray:
+        """Convert grid to numpy matrix for visualization"""
+        width = self.max_x - self.min_x + 1 + 2 * padding
+        height = self.max_y - self.min_y + 1 + 2 * padding
+        
+        # Create matrix
+        matrix = np.full((height, width), default_color, dtype=np.uint8)
+        
+        # Fill in colored cells
+        for (x, y), color in self.grid.items():
+            matrix_y = (self.max_y - y) + padding  # Flip y for proper display
+            matrix_x = (x - self.min_x) + padding
+            if 0 <= matrix_y < height and 0 <= matrix_x < width:
+                matrix[matrix_y, matrix_x] = color
+        
+        # Mark turmite position
+        turmite_y = (self.max_y - self.y) + padding
+        turmite_x = (self.x - self.min_x) + padding
+        if 0 <= turmite_y < height and 0 <= turmite_x < width:
+            matrix[turmite_y, turmite_x] = self.num_colors  # Special value for turmite
+        
+        return matrix
+    
+    def get_statistics(self) -> Dict:
+        """Get statistics about the turmite's journey"""
+        return {
+            "steps": self.steps,
+            "visited_cells": len(self.visited_cells),
+            "colored_cells": len(self.grid),
+            "grid_bounds": {
+                "min_x": self.min_x, "max_x": self.max_x,
+                "min_y": self.min_y, "max_y": self.max_y
+            },
+            "current_state": self.state,
+            "current_position": (self.x, self.y),
+            "current_direction": self.direction.name
+        }
+
+class TurmiteVisualizer:
+    """Visualization tools for turmites"""
+    
+    @staticmethod
+    def plot_turmite(turmite: Turmite, 
+                    title: str = "Turmite",
+                    cmap: str = "viridis",
+                    show_turmite: bool = True,
+                    figsize: Tuple[int, int] = (10, 10)) -> None:
+        """Create a static plot of the turmite's grid"""
+        matrix = turmite.get_grid_matrix()
+        
+        # Create custom colormap: first n colors for grid, last color for turmite
+        base_cmap = plt.cm.get_cmap(cmap, turmite.num_colors + 1)
+        colors_list = [base_cmap(i) for i in range(turmite.num_colors)]
+        if show_turmite:
+            colors_list.append((1, 0, 0, 1))  # Red for turmite
+        
+        custom_cmap = ListedColormap(colors_list)
+        
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Display matrix
+        im = ax.imshow(matrix, cmap=custom_cmap, 
+                      vmin=0, vmax=turmite.num_colors + (1 if show_turmite else 0))
+        
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_ticks(range(turmite.num_colors + (1 if show_turmite else 0)))
+        cbar.set_ticklabels([f"Color {i}" for i in range(turmite.num_colors)] + 
+                           (["Turmite"] if show_turmite else []))
+        
+        ax.set_title(title)
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        
+        stats = turmite.get_statistics()
+        info_text = (f"Steps: {stats['steps']}\n"
+                    f"Visited cells: {stats['visited_cells']}\n"
+                    f"Current state: {stats['current_state']}\n"
+                    f"Position: {stats['current_position']}\n"
+                    f"Direction: {stats['current_direction']}")
+        
+        plt.figtext(0.02, 0.02, info_text, fontsize=9, 
+                   bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+        
+        plt.tight_layout()
+        plt.show()
+    
+    @staticmethod
+    def animate_turmite(turmite: Turmite,
+                       steps: int = 1000,
+                       interval: int = 50,
+                       title: str = "Turmite Animation") -> animation.FuncAnimation:
+        """Create an animation of turmite evolution"""
+        # Initialize figure
+        fig, ax = plt.subplots(figsize=(8, 8))
+        
+        # Get initial matrix
+        matrix = turmite.get_grid_matrix()
+        height, width = matrix.shape
+        
+        # Create custom colormap
+        base_cmap = plt.cm.get_cmap("viridis", turmite.num_colors + 1)
+        colors_list = [base_cmap(i) for i in range(turmite.num_colors)]
+        colors_list.append((1, 0, 0, 1))  # Red for turmite
+        custom_cmap = ListedColormap(colors_list)
+        
+        im = ax.imshow(matrix, cmap=custom_cmap, 
+                      vmin=0, vmax=turmite.num_colors + 1,
+                      animated=True)
+        
+        ax.set_title(title)
+        
+        def update(frame):
+            nonlocal turmite
+            turmite.step()
+            matrix = turmite.get_grid_matrix()
+            im.set_array(matrix)
+            
+            # Update title with step count
+            ax.set_title(f"{title} - Step {turmite.steps}")
+            
+            return [im]
+        
+        ani = animation.FuncAnimation(fig, update, frames=steps,
+                                    interval=interval, blit=True, repeat=False)
+        plt.close(fig)  # Prevent duplicate display
+        return ani
+
+# ============================================================================
+# PREDEFINED TURMITE RULESETS
+# ============================================================================
+
+class TurmitePresets:
+    """Collection of famous turmite rules"""
+    
+    @staticmethod
+    def langtons_ant() -> Dict:
+        """Classic Langton's Ant (1 state, 2 colors)"""
+        return {
+            (0, 0): (1, Turn.RIGHT, 0),   # White -> Black, Turn Right
+            (0, 1): (0, Turn.LEFT, 0),    # Black -> White, Turn Left
+        }
+    
+    @staticmethod
+    def spiral_growth() -> Dict:
+        """Creates a spiral pattern (2 states, 2 colors)"""
+        return {
+            (0, 0): (1, Turn.LEFT, 1),    # State A, White -> Black, Turn Left, State B
+            (0, 1): (0, Turn.RIGHT, 1),   # State A, Black -> White, Turn Right, State B
+            (1, 0): (1, Turn.RIGHT, 0),   # State B, White -> Black, Turn Right, State A
+            (1, 1): (0, Turn.LEFT, 0),    # State B, Black -> White, Turn Left, State A
+        }
+    
+    @staticmethod
+    def chaotic_wanderer() -> Dict:
+        """A 3-state, 3-color chaotic turmite"""
+        return {
+            (0, 0): (1, Turn.RIGHT, 1),
+            (0, 1): (2, Turn.LEFT, 2),
+            (0, 2): (0, Turn.UTURN, 0),
+            (1, 0): (2, Turn.LEFT, 0),
+            (1, 1): (0, Turn.RIGHT, 2),
+            (1, 2): (1, Turn.NO_TURN, 1),
+            (2, 0): (0, Turn.RIGHT, 1),
+            (2, 1): (1, Turn.UTURN, 0),
+            (2, 2): (2, Turn.LEFT, 2),
+        }
+    
+    @staticmethod
+    def highway_builder() -> Dict:
+        """Creates periodic highways (like Langton's Ant but different)"""
+        return {
+            (0, 0): (1, Turn.RIGHT, 1),
+            (0, 1): (0, Turn.LEFT, 0),
+            (1, 0): (0, Turn.LEFT, 0),
+            (1, 1): (1, Turn.RIGHT, 1),
+        }
+    
+    @staticmethod
+    def random_turmite(num_states: int = 2, 
+                      num_colors: int = 2,
+                      seed: Optional[int] = None) -> Dict:
+        """Generate a random turmite rule table"""
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
+        
+        rules = {}
+        for state in range(num_states):
+            for color in range(num_colors):
+                new_color = random.randint(0, num_colors - 1)
+                turn = random.choice(list(Turn))
+                next_state = random.randint(0, num_states - 1)
+                rules[(state, color)] = (new_color, turn, next_state)
+        return rules
+
+# ============================================================================
+# INTERACTIVE DEMO FUNCTION
+# ============================================================================
+
+def demo_turmite(preset: str = "langtons_ant", 
+                steps: int = 500,
+                animate: bool = False,
+                save_animation: bool = False,
+                filename: str = "turmite_animation.gif"):
+    """Run a demo of a specific turmite"""
+    
+    # Get the ruleset
+    if preset == "langtons_ant":
+        rules = TurmitePresets.langtons_ant()
+        title = "Langton's Ant"
+        num_colors = 2
+    elif preset == "spiral":
+        rules = TurmitePresets.spiral_growth()
+        title = "Spiral Growth Turmite"
+        num_colors = 2
+    elif preset == "chaotic":
+        rules = TurmitePresets.chaotic_wanderer()
+        title = "Chaotic 3-State Turmite"
+        num_colors = 3
+    elif preset == "highway":
+        rules = TurmitePresets.highway_builder()
+        title = "Highway Builder"
+        num_colors = 2
+    elif preset == "random":
+        rules = TurmitePresets.random_turmite(num_states=3, num_colors=3, seed=42)
+        title = "Random 3-State Turmite"
+        num_colors = 3
+    else:
+        raise ValueError(f"Unknown preset: {preset}")
+    
+    # Create turmite
+    turmite = Turmite(
+        rule_table=rules,
+        initial_state=0,
+        initial_direction=Direction.NORTH,
+        initial_pos=(0, 0),
+        num_colors=num_colors
+    )
+    
+    if animate:
+        # Create animation
+        print(f"Animating {title} for {steps} steps...")
+        ani = TurmiteVisualizer.animate_turmite(
+            turmite, 
+            steps=steps, 
+            interval=50, 
+            title=title
+        )
+        
+        if save_animation:
+            print(f"Saving animation to {filename}...")
+            ani.save(filename, writer='pillow', fps=20)
+        
+        # Display animation in notebook or as HTML
+        try:
+            from IPython.display import HTML
+            return HTML(ani.to_jshtml())
+        except:
+            plt.show()
+    else:
+        # Run steps and show final state
+        print(f"Running {title} for {steps} steps...")
+        turmite.run(steps)
+        
+        # Print statistics
+        stats = turmite.get_statistics()
+        print("\n" + "="*50)
+        print(f"TURMITE STATISTICS:")
+        print(f"  Total steps: {stats['steps']}")
+        print(f"  Visited cells: {stats['visited_cells']}")
+        print(f"  Colored cells: {stats['colored_cells']}")
+        print(f"  Grid size: {stats['grid_bounds']['max_x'] - stats['grid_bounds']['min_x'] + 1} x "
+              f"{stats['grid_bounds']['max_y'] - stats['grid_bounds']['min_y'] + 1}")
+        print(f"  Current state: {stats['current_state']}")
+        print(f"  Position: {stats['current_position']}")
+        print(f"  Direction: {stats['current_direction']}")
+        print("="*50 + "\n")
+        
+        # Show visualization
+        TurmiteVisualizer.plot_turmite(turmite, title=title, show_turmite=True)
+    
+    return turmite
+
+# ============================================================================
+# ADVANCED FEATURES
+# ============================================================================
+
+class TurmiteAnalyzer:
+    """Tools for analyzing turmite behavior"""
+    
+    @staticmethod
+    def detect_periodicity(turmite: Turmite, 
+                          max_steps: int = 10000,
+                          check_interval: int = 100) -> Optional[Tuple[int, int]]:
+        """
+        Try to detect if turmite enters a periodic pattern.
+        Returns (start_step, period) if found, None otherwise.
+        """
+        # Store snapshots of turmite state
+        snapshots = {}
+        
+        for step in range(max_steps):
+            turmite.step()
+            
+            # Create state signature
+            signature = (
+                turmite.state,
+                turmite.direction,
+                turmite.x,
+                turmite.y,
+                frozenset(turmite.grid.items())  # Frozen set for hashing
+            )
+            
+            # Check if we've seen this state before
+            if signature in snapshots:
+                period_start = snapshots[signature]
+                period_length = step - period_start
+                return (period_start, period_length)
+            
+            # Store snapshot
+            snapshots[signature] = step
+        
+        return None
+    
+    @staticmethod
+    def generate_rule_table_code(turmite: Turmite) -> str:
+        """Generate Python code to recreate the turmite's rule table"""
+        code_lines = ["rule_table = {"]
+        
+        for (state, color), (new_color, turn, next_state) in sorted(turmite.rule_table.items()):
+            turn_str = f"Turn.{turn.name}" if isinstance(turn, Turn) else turn
+            code_lines.append(f"    ({state}, {color}): ({new_color}, {turn_str}, {next_state}),")
+        
+        code_lines.append("}")
+        return "\n".join(code_lines)
+
+# ============================================================================
+# EXAMPLE USAGE
+# ============================================================================
+
+if __name__ == "__main__":
+    print("TURMITE SIMULATOR")
+    print("="*60)
+    
+    # Example 1: Langton's Ant
+    print("\n1. Running Langton's Ant (10000 steps)...")
+    rules = TurmitePresets.langtons_ant()
+    ant = Turmite(rules, num_colors=2)
+    ant.run(10000)
+    
+    # Show statistics
+    stats = ant.get_statistics()
+    print(f"  Steps: {stats['steps']}")
+    print(f"  Grid bounds: {stats['grid_bounds']}")
+    
+    # Visualize
+    TurmiteVisualizer.plot_turmite(ant, title="Langton's Ant after 10,000 steps")
+    
+    # Example 2: Create and run a random turmite
+    print("\n2. Creating random 2-state, 3-color turmite...")
+    random_rules = TurmitePresets.random_turmite(
+        num_states=2, 
+        num_colors=3, 
+        seed=123
+    )
+    
+    random_turmite = Turmite(
+        random_rules,
+        initial_state=0,
+        num_colors=3
+    )
+    random_turmite.run(5000)
+    
+    # Show visualization with custom colormap
+    TurmiteVisualizer.plot_turmite(
+        random_turmite, 
+        title="Random Turmite (2 states, 3 colors)",
+        cmap="tab10",
+        show_turmite=True
+    )
+    
+    # Example 3: Analyze for periodicity
+    print("\n3. Analyzing for periodic behavior...")
+    analyzer = TurmiteAnalyzer()
+    result = analyzer.detect_periodicity(Turmite(TurmitePresets.langtons_ant()), 20000)
+    
+    if result:
+        print(f"  Periodic pattern detected!")
+        print(f"  Starts at step {result[0]}, period = {result[1]} steps")
+    else:
+        print("  No periodicity detected in first 20,000 steps")
+    
+    print("\n" + "="*60)
+    print("TURMITE DEMO COMPLETE!")
+    print("\nTo run more demos, use: demo_turmite(preset='spiral', steps=1000)")
+    print("Available presets: 'langtons_ant', 'spiral', 'chaotic', 'highway', 'random'")
+```
+
+Key Features of This Implementation:
+
+1. Modular Design
+
+· Turmite class: Core simulation engine
+· TurmiteVisualizer: Multiple visualization options
+· TurmitePresets: Collection of famous turmites
+· TurmiteAnalyzer: Analysis tools
+
+2. Flexible Rule System
+
+· Supports any number of states and colors
+· Clean rule table format: (state, color) → (new_color, turn, next_state)
+· Enum-based directions and turns for clarity
+
+3. Dynamic Grid
+
+· Uses dictionary for sparse grid representation
+· Automatically expands as turmite moves
+· Efficient memory usage
+
+4. Visualization Options
+
+· Static plots with statistics
+· Real-time animations
+· Custom colormaps
+· Turmite position highlighting
+
+5. Preset Examples
+
+· Langton's Ant: Classic 1-state, 2-color turmite
+· Spiral Growth: Creates beautiful spiral patterns
+· Chaotic Wanderer: 3-state, 3-color complex behavior
+· Random Turmites: Generate and explore new rules
+
+6. Analysis Tools
+
+· Periodicity detection
+· Rule table code generation
+· Comprehensive statistics tracking
+
+Quick Start Examples:
+
+```python
+# 1. Run Langton's Ant for 10,000 steps and visualize
+ant = Turmite(TurmitePresets.langtons_ant(), num_colors=2)
+ant.run(10000)
+TurmiteVisualizer.plot_turmite(ant, title="Langton's Ant")
+
+# 2. Create animation of a spiral turmite
+spiral = Turmite(TurmitePresets.spiral_growth(), num_colors=2)
+ani = TurmiteVisualizer.animate_turmite(spiral, steps=2000, interval=20)
+
+# 3. Run a demo with interactive options
+turmite = demo_turmite(preset='chaotic', steps=3000, animate=True)
+
+# 4. Create your own custom turmite
+custom_rules = {
+    (0, 0): (1, Turn.RIGHT, 1),
+    (0, 1): (2, Turn.LEFT, 0),
+    (1, 0): (0, Turn.UTURN, 1),
+    (1, 1): (1, Turn.NO_TURN, 0),
+}
+my_turmite = Turmite(custom_rules, num_colors=3)
+my_turmite.run(5000)
+```
+
+Advanced Features You Can Add:
+
+1. Hexagonal Grids: Modify movement system for hex grids
+2. Multiple Turmites: Simulate interacting turmites
+3. Genetic Algorithms: Evolve interesting turmite rules
+4. 3D Turmites: Extend to three dimensions
+5. Web Interface: Create interactive browser-based simulator
+6. Export Formats: Save patterns as SVG, PNG, or video
+7. Rule Mining: Discover rules that create specific patterns
+
+This implementation provides a solid foundation for exploring the fascinating world of turmites! The emergent complexity from simple rules makes turmites a perfect system for studying artificial life, computational theory, and pattern formation.
