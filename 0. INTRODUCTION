@@ -1,0 +1,70 @@
+The "Turmite" is a fascinating concept at the intersection of computer science, mathematics, and artificial life.
+
+A turmite (a portmanteau of Turing machine and termite) is a Turing machine that operates on a grid (like a cellular automaton) instead of a one-dimensional tape. It's most famously modeled after Langton's Ant, but generalized to have more states and more complex rules.
+
+Here are the key characteristics of a turmite:
+
+1. Core Components (The "Hardware")
+
+A turmite is defined by a few simple parts that interact on an infinite grid of cells (typically square, but can be hexagonal):
+
+· Location: A position on the grid (x, y).
+· Heading: A direction it is facing (e.g., North, East, South, West).
+· Internal State: A finite set of states (e.g., State A, State B, etc.). The simplest turmite (Langton's Ant) has only one state.
+· Environment: An infinite grid where each cell has a color from a finite set (e.g., Black/White, 0/1). This is analogous to the symbols on a Turing machine's tape.
+
+2. The Rule Set (The "Program")
+
+This is the essence of the turmite. The rules are a finite state table that tells the turmite what to do based on its current internal state and the color of the cell it is standing on.
+
+For each (Current State, Current Cell Color) pair, the rule specifies a triple:
+
+1. Write: What new color to paint the current cell.
+2. Turn: What direction to turn (e.g., Left 90°, Right 90°, U-turn, No turn).
+3. Next State: Which internal state to transition to.
+
+3. Operational Characteristics
+
+· Discrete Time Steps: The turmite operates in ticks. At each step, it:
+  1. Reads the color of the cell beneath it.
+  2. Executes the corresponding rule: changes the cell's color, turns, changes its internal state.
+  3. Moves forward one cell in its new direction.
+· Deterministic: Given the same state and cell color, it always performs the same action. There is no randomness.
+· Spatial Computation: Unlike a classic Turing machine, its "tape" is a 2D plane, and its path (the sequence of visited cells) is a crucial part of its output.
+
+4. Emergent Behavior
+
+This is the most important and surprising characteristic. From these extremely simple rules, incredibly complex behavior can emerge:
+
+· Simple Repetition: Some turmites quickly fall into a short, repeating loop (a "highway").
+· Chaotic Growth: Many, like Langton's Ant, start with a long period of seemingly chaotic, asymmetric wandering before...
+· Order from Chaos: ...eventually (often after 10,000+ steps) locking into a perfectly periodic, repeating pattern that builds an infinite, regular structure (like Langton's Ant's "highway").
+· Universal Construction: The most complex turmites are Turing complete. They can be programmed (via their state/color table) to simulate any computation and construct any pattern or structure, given enough time and space. They are a form of 2D Turing machine.
+
+5. Key Differentiators from Similar Systems
+
+· vs. Cellular Automata (like Conway's Game of Life): A turmite is a single agent moving through a passive grid. CAs have many cells that update simultaneously based on their neighbors.
+· vs. Classic Turing Machine: The "tape" is 2D and the "read/write head" (the turmite) leaves a colored path behind it, creating a visual record of its computation.
+· vs. Langton's Ant: Langton's Ant is a specific, simple turmite with 1 state and 2 colors. "Turmite" is the general class of such machines with potentially many states and colors.
+
+Famous Example: Langton's Ant
+
+· States: 1
+· Colors: White (0), Black (1)
+· Rules:
+  · If on a White cell: Paint it Black, Turn Right, State remains the same. Move forward.
+  · If on a Black cell: Paint it White, Turn Left, State remains the same. Move forward.
+· Behavior: Chaotic for ~10,000 steps, then builds a recurring "highway" pattern to infinity.
+
+Summary of Characteristics:
+
+Characteristic Description
+Nature A deterministic finite-state machine on a 2D grid.
+Mechanism An agent with a location, heading, and internal state.
+Rule Base Acts on a lookup table: (State, Color) → (New Color, Turn, New State).
+Behavior Capable of emergence: from simple cycles to chaotic paths to complex, periodic construction.
+Computational Power The general class is Turing complete.
+Output The visual pattern of painted cells on the grid (its "trail").
+
+In essence, a turmite is a minimalist model of agency, computation, and emergence. It shows how complex, life-like behavior and universal computation can arise from a set of trivial, local rules.
+
